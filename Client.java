@@ -36,6 +36,7 @@ public class Client {
     //socket
     static MulticastSocket socket;
     //IP address
+    static InetAddress group;
     static InetAddress address;
     //port number
     static int port;
@@ -55,6 +56,9 @@ public class Client {
 
     // assigned client ID from server, use throughout the process
     static String clientID;
+    
+    // one and only passcode
+    static String passcode;
 
     //i know we agreed to keep the GUI for last, but i made this part of the GUI anyway
     //i did this because i was having a hard time figuring out how to keep printing messages while simultaneously expecting command line input
@@ -122,7 +126,6 @@ public class Client {
                 try {
                     String message = receiveMessage();
                     String element = interpretMessage(message);
-                    // maybe special conditions, I am leaving it like this for now
                     chatModel.addElement(element);
                 } catch (IOException e) {
                     System.out.println("Error: Connection to the server has been lost.");
@@ -155,11 +158,11 @@ public class Client {
 
     static String receiveMessage() throws IOException {
         // just receiving, interpret separately
-        byte[] receiveBuffer = new byte[30];
+        byte[] receiveBuffer = new byte[1000];
         DatagramPacket packet = new DatagramPacket(receiveBuffer, receiveBuffer.length);
         socket.receive(packet);
         byte[] received = packet.getData();
-        String response = new String(received);
+        String response = new String(received).trim();
         return response;
     }
 
@@ -180,9 +183,6 @@ public class Client {
     }
 
     static int connect(String name, String passcode) throws IOException {
-
-        //establish connection to server
-        socket = new MulticastSocket();
 
         sendMessage(joinRequestMessage(passcode, name));
 
@@ -211,7 +211,8 @@ public class Client {
 
         //prompt the user for a passcode
         System.out.print("Passcode: ");
-        String passcode = scan.nextLine();
+        String code = scan.nextLine();
+        passcode = code;
 
         //try connecting to the server
         int connectionResult;
@@ -274,13 +275,15 @@ public class Client {
         String type = parsed[0];
         switch (type) {
             case "1":
-                return parsed[1];     // client ID
+                return decrypted(parsed[1]);     // client ID
             case "2":
-                return parsed[1] + ": " + parsed[2];     // username: massage
+                return decrypted(parsed[1]) + ": " + decrypted(parsed[2]);     // username: massage
             case "3":
                 return parsed[1];     // END
             case "4":
                 return "Error " + parsed[1] + ": " + parsed[2];     // Error [errCode]: errMessage 
+            case "5":
+                return decrypted(parsed[1]);
             default:
                 return "Unknown message";
         }
@@ -312,22 +315,37 @@ public class Client {
         return encrypted;
     }
 
-    static String decrypted(String msg) {
-        String[] split = msg.split(",");
-        // unsure about the key server would use to encrypt
-        // can't be the client key because it's multicasting, other clients have different keys
-        return "";     // return nothing for now
+    static String decrypted(String message) {
+        String key = passcode;
+        while (message.length() > key.length()) {
+            key = key + key;
+        }
+        int i = 0;
+        String decrypted = "";
+        String[] parsed = message.split(",");
+        for (i = 0; i < parsed.length; ++i) {
+            int e = Integer.parseInt(parsed[i]);
+            int k = (int) key.charAt(i);
+            int msg = e ^ k;
+            decrypted = decrypted + (char) msg;
+        }
+        return decrypted;
     }
 
     public static void main(String[] args) throws UnknownHostException, IOException {
 
         //IP address
         //just fill in the blank with the IP address of the machine that will run the server
+        group = InetAddress.getByName("230.0.0.0");
         address = InetAddress.getByName("");
 
         //port number
         //just change the "2770" with whichever port number we're actually gonna use
         port = 2770;
+        
+        //establish connection to server
+        socket = new MulticastSocket(port);
+        socket.joinGroup(group);
 
         // ask server for encryption public key
         sendMessage("Key Request");
