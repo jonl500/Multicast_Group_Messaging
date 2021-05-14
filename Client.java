@@ -1,37 +1,65 @@
-import net.miginfocom.swing.MigLayout;
+/*
+ * CSC 445 Assignment 3 - Group Messaging Application
+ * Client
+ */
+package assignment3;
 
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.math.BigInteger;
+import java.net.DatagramPacket;
 import java.net.InetAddress;
-import java.net.Socket;
+import java.net.MulticastSocket;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Scanner;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import net.miginfocom.swing.MigLayout;
 
-public class Client
-{
+public class Client {
+
     /* how the server is gonna tell the difference between someone trying to join and a message to be multicasted */
     // "msg:xxx" tells the server that the input it has received is a message to be multicasted
     // "user:xxx:xxx" tells the server someone is trying to join. colon separates name and passcode
     // "leave:" tells the server that someone is requesting to leave
-
     //scanner
     static Scanner scan = new Scanner(System.in);
 
     //socket
-    static Socket socket;
+    static MulticastSocket socket;
+    //IP address
+    static InetAddress group;
+    static InetAddress address;
+    //port number
+    static int port;
 
-    //socket input and output
-    static PrintWriter out;
-    static BufferedReader in;
+    // parameters for encrytion
+    static BigInteger p = BigInteger.valueOf(2147483647);    // Integer.MAX_VALUE and prime
+    static BigInteger g = BigInteger.valueOf(7);
+    static int a;     // random for every message
+    static BigInteger A;
+    static BigInteger B;
+    static BigInteger C;
+    static byte[] key;
+
+    // for sending messages
+    static String separator = "|00|";
+    static String parseSeparator = "\\|00\\|";
+
+    // assigned client ID from server, use throughout the process
+    static String clientID;
+
+    // one and only passcode
+    static String passcode;
 
     //i know we agreed to keep the GUI for last, but i made this part of the GUI anyway
     //i did this because i was having a hard time figuring out how to keep printing messages while simultaneously expecting command line input
-    static void messageGUI()
-    {
+    static void messageGUI() {
         //create the frame
         JFrame frame = new JFrame("Multicast Group Messaging Client");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -56,9 +84,12 @@ public class Client
         sendButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent actionEvent) {
-                //send the message
-                sendMessage(messageField.getText());
-
+                try {
+                    //send the message
+                    sendMessage(messageField.getText());
+                } catch (IOException ex) {
+                    Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+                }
                 //clear the text field
                 messageField.setText("");
             }
@@ -71,14 +102,14 @@ public class Client
         leaveButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent actionEvent) {
-                try
-                {
+                try {
                     String leaveResponse = leave();
-                    System.out.println(leaveResponse);
+                    leaveResponse = interpretMessage(leaveResponse);
+                    if (leaveResponse.equals("END")) {
+                        System.out.println(leaveResponse);
+                    }
                     frame.dispose();
-                }
-                catch (IOException e)
-                {
+                } catch (IOException e) {
                     System.out.println("Error: Connection to the server has been lost.");
                     frame.dispose();
                 }
@@ -89,13 +120,11 @@ public class Client
         Timer timer = new Timer(100, new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent actionEvent) {
-                try
-                {
+                try {
                     String message = receiveMessage();
-                    chatModel.addElement(message);
-                }
-                catch (IOException e)
-                {
+                    String element = interpretMessage(message);
+                    chatModel.addElement(element);
+                } catch (IOException e) {
                     System.out.println("Error: Connection to the server has been lost.");
                     frame.dispose();
                 }
@@ -116,75 +145,62 @@ public class Client
         //start the timer
         timer.start();
     }
-
-    static void sendMessage(String message)
-    {
+    
+    static void sendMessage(String message) throws IOException {
         //i'm just going to assume that which message was sent by who, keeping track of names, etc. will all be handled by the server
-        out.println("msg:" + message);
+        byte[] buf = message.getBytes();
+        DatagramPacket packet = new DatagramPacket(buf, buf.length, address, port);
+        socket.send(packet);
     }
-
-    static String receiveMessage() throws IOException
-    {
-        //maybe the server can just concatenate a string for the client to print for each message
-        //that way the client doesn't have to process it and can just print it
-        //like "Name: message"
-        //for example: "Dave: Hello!"
-        //also use this for server messages, like "(name) has entered the chat."
-        return in.readLine();
+    
+    static String receiveMessage() throws IOException {
+        // just receiving, interpret separately
+        byte[] receiveBuffer = new byte[1000];
+        DatagramPacket packet = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+        socket.receive(packet);
+        byte[] received = packet.getData();
+        String response = new String(received).trim();
+        return response;
     }
-
-    static String leave() throws IOException
-    {
+    
+    static void receiveKey() throws IOException {
+        // just receiving, interpret separately
+        byte[] receiveBuffer = new byte[4];
+        DatagramPacket packet = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+        socket.receive(packet);
+        byte[] received = packet.getData();
+        B = BigInteger.valueOf(ByteBuffer.wrap(received).getInt());
+        System.out.println(B.intValue());
+    }
+    
+    static String leave() throws IOException {
         //send request to the server to leave
-        out.println("leave:");
-
+        sendMessage(leaveRequestMessage(clientID));
         //get response to request
-        return in.readLine();
+        return receiveMessage();
     }
-
-    static int connect(String name, String passcode) throws IOException
-    {
-        //IP address
-        //just fill in the blank with the IP address of the machine that will run the server
-        InetAddress address = InetAddress.getByName("");
-
-        //port number
-        //just change the "2770" with whichever port number we're actually gonna use
-        int port = 2770;
-
-        //establish connection to server
-        socket = new Socket(address, port);
-
-        //set up output
-        out = new PrintWriter(socket.getOutputStream(), true);
-
-        //set up input
-        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-        //send the server the name and passcode that was entered
-        out.println("user:" + name + ":" + passcode);
+    
+    static int connect(String name, String passcode) throws IOException {
+        
+        sendMessage(joinRequestMessage(passcode, name));
 
         //get a response from the server
-        String response = in.readLine();
+        String response = receiveMessage();
+        response = interpretMessage(response);
 
         //the server will deny access if the passcode is wrong or the name is already in use
-        if(response.equals("wrongpasscode"))
-        {
+        if (response.contains("Error")) {
             socket.close();
+            System.out.println(response);
             return 2;
-        }
-        else if(response.equals("duplicatename"))
-        {
-            socket.close();
-            return 3;
         }
 
         //return 0 if there are no problems
+        clientID = response;
         return 0;
     }
-
-    static boolean logIn()
-    {
+    
+    static boolean logIn() {
         boolean loginSuccessful;
 
         //prompt the user for a display name
@@ -193,68 +209,163 @@ public class Client
 
         //prompt the user for a passcode
         System.out.print("Passcode: ");
-        String passcode = scan.nextLine();
+        String code = scan.nextLine();
+        passcode = code;
 
         //try connecting to the server
         int connectionResult;
-        try
-        {
+        try {
             connectionResult = connect(name, passcode);
-        }
-        catch (IOException e)
-        {
+        } catch (IOException e) {
             connectionResult = 1;
         }
 
         //check the connection result
-        if (connectionResult == 0)
-        {
+        if (connectionResult == 0) {
             //connection succeeded
             loginSuccessful = true;
-        }
-        else if(connectionResult == 1)
-        {
+        } else if (connectionResult == 1) {
             //couldn't connect to server
             System.out.println("Error: Failed to connect to server.");
             loginSuccessful = false;
-        }
-        else if(connectionResult == 2)
-        {
-            //wrong passcode
-            System.out.println("Error: You did not enter the correct passcode.");
+        } else if (connectionResult == 2) {
+            // an error happened
             loginSuccessful = false;
-        }
-        else if(connectionResult == 3)
-        {
-            //name already in use
-            System.out.println("Error: That display name is already in use.");
-            loginSuccessful = false;
-        }
-        else
-        {
+        } else {
             System.out.println("Error: An unknown error has occurred.");
             loginSuccessful = false;
         }
-
+        
         return loginSuccessful;
     }
+    
+    static String joinRequestMessage(String passcode, String username) throws IOException {
+        generateRandomKey();     // random key for each message
+        String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
+        publicKey = publicKey.substring(1, publicKey.length() - 1);
+        String type = "1";
+        System.out.println(type + separator + passcode + separator + username);
+        return publicKey + separator + encrypted(type + separator + passcode + separator + username);
+    }
+    
+    static String generalMessage(String clientID, String msg) throws IOException {
+        generateRandomKey();     // random key for each message
+        String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
+        publicKey = publicKey.substring(1, publicKey.length() - 1);
+        String type = "2";
+        System.out.println(type + separator + clientID + separator + msg);
+        return publicKey + separator + encrypted(type + separator + clientID + separator + msg);
+    }
+    
+    static String leaveRequestMessage(String clientID) throws IOException {
+        generateRandomKey();     // random key for each message
+        String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
+        publicKey = publicKey.substring(1, publicKey.length() - 1);
+        String type = "3";
+        System.out.println(type + separator + clientID);
+        return publicKey + separator + encrypted(type + separator + clientID);
+    }
+    
+    static String interpretMessage(String message) {
+        String msg = decrypted(message);
+        String[] parsed = msg.split(parseSeparator);
+        String type = parsed[0];
+        switch (type) {
+            case "1":
+                return parsed[1];     // client ID
+            case "2":
+                return parsed[1] + ": " + parsed[2];     // username: massage
+            case "3":
+                return parsed[1];     // END
+            case "4":
+                return "Error " + parsed[1] + ": " + parsed[2];     // Error [errCode]: errMessage 
+            case "5":
+                return parsed[1];
+            default:
+                return "Unknown message";
+        }
+    }
+    
+    static void generateRandomKey() {
+        a = (int) (Math.random() * 100) + 10;
+        A = g.pow(a).mod(p);
+        C = B.pow(a).mod(p);
+        key = ByteBuffer.allocate(4).putInt(C.intValue()).array();
+        System.out.println(Arrays.toString(key));
+    }
+    
+    static String encrypted(String message) throws IOException {
+        int size = message.length();
+        if (size % 4 != 0) {
+            size = size + (4 - size % 4);     // to make the size multiple of 4, easier to parse integer
+        }
+        byte[] encryptedBytes = new byte[size];
+        int intKey = ByteBuffer.wrap(key).getInt();
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        b.write(message.getBytes());
+        for (int i = 0; i < (4 - size % 4); i++) {
+            b.write((byte) 0);
+        }
+        ByteBuffer buffer = ByteBuffer.wrap(b.toByteArray());
+        for (int i = 0; i < size; i = i + 4) {
+            int intMessage = buffer.getInt();
+            int xor = intMessage ^ intKey;
+            byte[] encryptedPart = ByteBuffer.allocate(4).putInt(xor).array();
+            System.arraycopy(encryptedPart, 0, encryptedBytes, i, 4);
+        }
+        String encrypted = Arrays.toString(encryptedBytes);
+        encrypted = encrypted.substring(1, encrypted.length() - 1);
+        return encrypted;
+    }
+    
+    static String decrypted(String message) {
+        String key = passcode;
+        while (message.length() > key.length()) {
+            key = key + key;
+        }
+        int i = 0;
+        String decrypted = "";
+        String[] parsed = message.split(",");
+        for (i = 0; i < parsed.length; ++i) {
+            int e = Integer.parseInt(parsed[i]);
+            int k = (int) key.charAt(i);
+            int msg = e ^ k;
+            decrypted = decrypted + (char) msg;
+        }
+        return decrypted;
+    }
+    
+    public static void main(String[] args) throws UnknownHostException, IOException {
 
-    public static void main(String[] args)
-    {
+        //IP address
+        //just fill in the blank with the IP address of the machine that will run the server
+        group = InetAddress.getByName("230.0.0.0");
+        address = InetAddress.getByName("pi.cs.oswego.edu");
+
+        //port number
+        //just change the "2770" with whichever port number we're actually gonna use
+        port = 2770;
+
+        //establish connection to server
+        socket = new MulticastSocket(port);
+        socket.joinGroup(group);
+
+        // ask server for encryption public key
+        sendMessage("Key Request");
+        receiveKey();
+
         //try to log in
         boolean loginSuccessful = logIn();
 
         //check if the login was successful
-        if(loginSuccessful)
-        {
+        if (loginSuccessful) {
             //display the message GUI
-            javax.swing.SwingUtilities.invokeLater(new Runnable()
-            {
-                public void run ()
-                {
+            javax.swing.SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
                     messageGUI();
                 }
             });
         }
     }
+    
 }
