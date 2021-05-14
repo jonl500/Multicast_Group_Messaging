@@ -93,7 +93,7 @@ public class Client {
             public void actionPerformed(ActionEvent actionEvent) {
                 try {
                     //send the message
-                    sendMessage(messageField.getText());
+                    sendMessage(generalMessage(clientID, messageField.getText()));
                 } catch (IOException ex) {
                     Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
                 }
@@ -119,9 +119,19 @@ public class Client {
                         System.out.println(leaveResponse);
                     }
                     frame.dispose();
+                    socket.leaveGroup(group);
+                    socket.close();
+                    return;
                 } catch (IOException e) {
                     System.out.println("Error: Connection to the server has been lost.");
                     frame.dispose();
+                    try {
+                        socket.leaveGroup(group);
+                    } catch (IOException ex) {
+                        Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    socket.close();
+                    return;
                 }
             }
         });
@@ -136,7 +146,7 @@ public class Client {
                     chatModel.addElement(element);
                     redrawGui();
                 } catch (IOException e) {
-                    //
+
                 }
             }
         });
@@ -157,8 +167,7 @@ public class Client {
         timer.start();
     }
 
-    static void redrawGui()
-    {
+    static void redrawGui() {
         //clear frame
 
         //add all the components to the frame
@@ -182,7 +191,7 @@ public class Client {
 
     static String receiveMessage() throws IOException {
         // just receiving, interpret separately
-        byte[] receiveBuffer = new byte[1000];
+        byte[] receiveBuffer = new byte[10000];
         DatagramPacket packet = new DatagramPacket(receiveBuffer, receiveBuffer.length);
         socket.receive(packet);
         byte[] received = packet.getData();
@@ -197,7 +206,7 @@ public class Client {
         socket.receive(packet);
         byte[] received = packet.getData();
         B = BigInteger.valueOf(ByteBuffer.wrap(received).getInt());
-        System.out.println(B.intValue());
+        // System.out.println(B.intValue());
     }
 
     static String leave() throws IOException {
@@ -271,7 +280,7 @@ public class Client {
         String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
         publicKey = publicKey.substring(1, publicKey.length() - 1);
         String type = "1";
-        System.out.println(type + separator + passcode + separator + username);
+        // System.out.println(type + separator + passcode + separator + username);
         return publicKey + separator + encrypted(type + separator + passcode + separator + username);
     }
 
@@ -280,7 +289,7 @@ public class Client {
         String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
         publicKey = publicKey.substring(1, publicKey.length() - 1);
         String type = "2";
-        System.out.println(type + separator + clientID + separator + msg);
+        // System.out.println(type + separator + clientID + separator + msg);
         return publicKey + separator + encrypted(type + separator + clientID + separator + msg);
     }
 
@@ -289,7 +298,7 @@ public class Client {
         String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
         publicKey = publicKey.substring(1, publicKey.length() - 1);
         String type = "3";
-        System.out.println(type + separator + clientID);
+        // System.out.println(type + separator + clientID);
         return publicKey + separator + encrypted(type + separator + clientID);
     }
 
@@ -297,20 +306,28 @@ public class Client {
         String msg = decrypted(message);
         String[] parsed = msg.split(parseSeparator);
         String type = parsed[0];
+        String output;
         switch (type) {
             case "1":
-                return parsed[1];     // client ID
+                output = parsed[1];     // client ID
+                break;
             case "2":
-                return parsed[1] + ": " + parsed[2];     // username: massage
+                output = parsed[1] + ": " + parsed[2];     // username: massage
+                break;
             case "3":
-                return parsed[1];     // END
+                output = parsed[1];     // END
+                break;
             case "4":
-                return "Error " + parsed[1] + ": " + parsed[2];     // Error [errCode]: errMessage
+                output = "Error " + parsed[1] + ": " + parsed[2];     // Error [errCode]: errMessage
+                break;
             case "5":
-                return parsed[1];
+                output = parsed[1];
+                break;
             default:
-                return "Unknown message";
+                output = "Unknown message";
+                break;
         }
+        return output;
     }
 
     static void generateRandomKey() {
@@ -318,7 +335,7 @@ public class Client {
         A = g.pow(a).mod(p);
         C = B.pow(a).mod(p);
         key = ByteBuffer.allocate(4).putInt(C.intValue()).array();
-        System.out.println(Arrays.toString(key));
+        // System.out.println(Arrays.toString(key));
     }
 
     static String encrypted(String message) throws IOException {
@@ -366,8 +383,8 @@ public class Client {
 
         //IP address
         //just fill in the blank with the IP address of the machine that will run the server
-        group = InetAddress.getByName("230.0.0.0");
-        address = InetAddress.getByName("pi.cs.oswego.edu");
+        group = InetAddress.getByName("230.0.0.1");
+        address = InetAddress.getByName("rho.cs.oswego.edu");
 
         //port number
         //just change the "2770" with whichever port number we're actually gonna use

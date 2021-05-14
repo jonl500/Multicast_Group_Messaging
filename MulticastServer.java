@@ -43,12 +43,11 @@ public class MulticastServer {
 
     public static void main(String[] args) throws IOException {
         clients = new HashMap<>();
-        group = InetAddress.getByName("230.0.0.0");     // where we run our server
+        group = InetAddress.getByName("230.0.0.1");     // where we run our multicast
         port = 2770;
         socket = new DatagramSocket(port);
         b = (int) (Math.random() * 100) + 10;
         B = g.pow(b).mod(p);
-        System.out.println(B.intValue());
         passcode = "P1ea53Le7MePa5s";     // Please let me pass ...
         while (true) {
             String received = receiveMessage();
@@ -83,7 +82,6 @@ public class MulticastServer {
         DatagramPacket packet = new DatagramPacket(receiveBuffer, receiveBuffer.length);
         socket.receive(packet);
         address = packet.getAddress();
-        System.out.println(address.getHostName());
         byte[] received = packet.getData();
         String response = new String(received).trim();
         return response;
@@ -156,7 +154,7 @@ public class MulticastServer {
                 }
                 break;
             case "3":
-                String id = parsed[2];
+                String id = parsed[1];
                 if (clients.containsKey(id)) {
                     sendMessage(leaveRequestResponse());
                     multicastMessage(leaveBroadcast(id));
@@ -172,7 +170,7 @@ public class MulticastServer {
     }
 
     private static void receiveKey(String publicKey) {
-        System.out.println(publicKey);
+        // System.out.println(publicKey);
         String[] split = publicKey.split(", ");
         byte[] buf = new byte[split.length];
         for (int i = 0; i < split.length; i++) {
@@ -183,7 +181,7 @@ public class MulticastServer {
         C = A.pow(b).mod(p);
         key = ByteBuffer.allocate(4).putInt(C.intValue()).array();
         // check
-        System.out.println(Arrays.toString(key));
+        // System.out.println(Arrays.toString(key));
     }
 
     private static boolean verifyPasscode(String receivedPC) {
@@ -203,7 +201,7 @@ public class MulticastServer {
     private static String joinRequestResponse(String clientID) {
         String type = "1";
         // check
-        System.out.println(type + separator + clientID);
+        // System.out.println(type + separator + clientID);
         String encrypted = encrypted(type + separator + clientID);
         return encrypted;
     }
@@ -211,14 +209,14 @@ public class MulticastServer {
     private static String errorMessage(int errCode, String errMsg) {
         String type = "4";
         // check
-        System.out.println(type + separator + errCode + separator + errMsg);
+        // System.out.println(type + separator + errCode + separator + errMsg);
         return encrypted(type + separator + errCode + separator + errMsg);
     }
 
     private static String leaveRequestResponse() {
         String type = "3";
         // check
-        System.out.println(type + separator + "END");
+        // System.out.println(type + separator + "END");
         return encrypted(type + separator + "END");
     }
 
@@ -226,7 +224,7 @@ public class MulticastServer {
         String type = "5";
         String username = clients.get(clientID);
         // check
-        System.out.println(type + separator + " [ " + username + " ] has entered the chat.");
+        // System.out.println(type + separator + " [ " + username + " ] has entered the chat.");
         String msg = encrypted(type + separator + " [ " + username + " ] has entered the chat.");
         return msg;
     }
@@ -235,16 +233,17 @@ public class MulticastServer {
         String type = "5";
         String username = clients.get(clientID);
         // check
-        System.out.println(type + separator + " [ " + username + " ] has left the chat.");
+        // System.out.println(type + separator + " [ " + username + " ] has left the chat.");
         String msg = encrypted(type + separator + " [ " + username + " ] has left the chat.");
         return msg;
     }
 
     private static String generalMessage(String clientID, String message) {
         String type = "2";
+        String username = clients.get(clientID);
         // check
-        System.out.println(type + separator + clientID + separator + message);
-        String msg = encrypted(type + separator + clientID + separator + message);
+        // System.out.println(type + separator + username + separator + message);
+        String msg = encrypted(type + separator + username + separator + message);
         return msg;
     }
 }
