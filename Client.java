@@ -56,12 +56,19 @@ public class Client {
 
     // one and only passcode
     static String passcode;
+    
+    //gui components
+    static JFrame frame;
+    static JScrollPane chatScroll;
+    static JTextField messageField;
+    static JButton sendButton;
+    static JButton leaveButton;
 
     //i know we agreed to keep the GUI for last, but i made this part of the GUI anyway
     //i did this because i was having a hard time figuring out how to keep printing messages while simultaneously expecting command line input
     static void messageGUI() {
         //create the frame
-        JFrame frame = new JFrame("Multicast Group Messaging Client");
+        frame = new JFrame("Multicast Group Messaging Client");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         //layout
@@ -71,11 +78,11 @@ public class Client {
         //list for messages that have been sent
         DefaultListModel chatModel = new DefaultListModel();
         JList chat = new JList(chatModel);
-        JScrollPane chatScroll = new JScrollPane();
+        chatScroll = new JScrollPane();
         chatScroll.setViewportView(chat);
 
         //text field to enter a message
-        JTextField messageField = new JTextField();
+        messageField = new JTextField();
 
         //button to send a message
         JButton sendButton = new JButton("Send");
@@ -92,11 +99,14 @@ public class Client {
                 }
                 //clear the text field
                 messageField.setText("");
+
+                //redraw gui
+                redrawGui();
             }
         });
 
         //button to leave
-        JButton leaveButton = new JButton("Leave");
+        leaveButton = new JButton("Leave");
 
         //leave button listener
         leaveButton.addActionListener(new ActionListener() {
@@ -124,6 +134,7 @@ public class Client {
                     String message = receiveMessage();
                     String element = interpretMessage(message);
                     chatModel.addElement(element);
+                    redrawGui();
                 } catch (IOException e) {
                     System.out.println("Error: Connection to the server has been lost.");
                     frame.dispose();
@@ -144,6 +155,22 @@ public class Client {
 
         //start the timer
         timer.start();
+    }
+
+    static void redrawGui()
+    {
+        //clear frame
+
+        //add all the components to the frame
+        frame.add(chatScroll, "cell 0 0, width 400:400:400, height 200:200:200");
+        frame.add(messageField, "cell 0 1, width 400:400:400");
+        frame.add(sendButton, "cell 0 2, width 100:100:100, height 25:25:25, gapbottom 50");
+        frame.add(leaveButton, "cell 0 3, width 100:100:100, height 25:25:25");
+
+        //draw the frame
+        frame.setSize(500, 400);
+        frame.setResizable(false);
+        frame.setVisible(true);
     }
     
     static void sendMessage(String message) throws IOException {
