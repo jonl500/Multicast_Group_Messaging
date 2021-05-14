@@ -56,7 +56,7 @@ public class Client {
 
     // one and only passcode
     static String passcode;
-    
+
     //gui components
     static JFrame frame;
     static JScrollPane chatScroll;
@@ -85,7 +85,7 @@ public class Client {
         messageField = new JTextField();
 
         //button to send a message
-        JButton sendButton = new JButton("Send");
+        sendButton = new JButton("Send");
 
         //send button listener
         sendButton.addActionListener(new ActionListener() {
@@ -136,8 +136,7 @@ public class Client {
                     chatModel.addElement(element);
                     redrawGui();
                 } catch (IOException e) {
-                    System.out.println("Error: Connection to the server has been lost.");
-                    frame.dispose();
+                    //
                 }
             }
         });
@@ -154,6 +153,7 @@ public class Client {
         frame.setVisible(true);
 
         //start the timer
+        timer.setRepeats(true);
         timer.start();
     }
 
@@ -172,14 +172,14 @@ public class Client {
         frame.setResizable(false);
         frame.setVisible(true);
     }
-    
+
     static void sendMessage(String message) throws IOException {
         //i'm just going to assume that which message was sent by who, keeping track of names, etc. will all be handled by the server
         byte[] buf = message.getBytes();
         DatagramPacket packet = new DatagramPacket(buf, buf.length, address, port);
         socket.send(packet);
     }
-    
+
     static String receiveMessage() throws IOException {
         // just receiving, interpret separately
         byte[] receiveBuffer = new byte[1000];
@@ -189,7 +189,7 @@ public class Client {
         String response = new String(received).trim();
         return response;
     }
-    
+
     static void receiveKey() throws IOException {
         // just receiving, interpret separately
         byte[] receiveBuffer = new byte[4];
@@ -199,16 +199,16 @@ public class Client {
         B = BigInteger.valueOf(ByteBuffer.wrap(received).getInt());
         System.out.println(B.intValue());
     }
-    
+
     static String leave() throws IOException {
         //send request to the server to leave
         sendMessage(leaveRequestMessage(clientID));
         //get response to request
         return receiveMessage();
     }
-    
+
     static int connect(String name, String passcode) throws IOException {
-        
+
         sendMessage(joinRequestMessage(passcode, name));
 
         //get a response from the server
@@ -226,7 +226,7 @@ public class Client {
         clientID = response;
         return 0;
     }
-    
+
     static boolean logIn() {
         boolean loginSuccessful;
 
@@ -262,10 +262,10 @@ public class Client {
             System.out.println("Error: An unknown error has occurred.");
             loginSuccessful = false;
         }
-        
+
         return loginSuccessful;
     }
-    
+
     static String joinRequestMessage(String passcode, String username) throws IOException {
         generateRandomKey();     // random key for each message
         String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
@@ -274,7 +274,7 @@ public class Client {
         System.out.println(type + separator + passcode + separator + username);
         return publicKey + separator + encrypted(type + separator + passcode + separator + username);
     }
-    
+
     static String generalMessage(String clientID, String msg) throws IOException {
         generateRandomKey();     // random key for each message
         String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
@@ -283,7 +283,7 @@ public class Client {
         System.out.println(type + separator + clientID + separator + msg);
         return publicKey + separator + encrypted(type + separator + clientID + separator + msg);
     }
-    
+
     static String leaveRequestMessage(String clientID) throws IOException {
         generateRandomKey();     // random key for each message
         String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
@@ -292,7 +292,7 @@ public class Client {
         System.out.println(type + separator + clientID);
         return publicKey + separator + encrypted(type + separator + clientID);
     }
-    
+
     static String interpretMessage(String message) {
         String msg = decrypted(message);
         String[] parsed = msg.split(parseSeparator);
@@ -305,14 +305,14 @@ public class Client {
             case "3":
                 return parsed[1];     // END
             case "4":
-                return "Error " + parsed[1] + ": " + parsed[2];     // Error [errCode]: errMessage 
+                return "Error " + parsed[1] + ": " + parsed[2];     // Error [errCode]: errMessage
             case "5":
                 return parsed[1];
             default:
                 return "Unknown message";
         }
     }
-    
+
     static void generateRandomKey() {
         a = (int) (Math.random() * 100) + 10;
         A = g.pow(a).mod(p);
@@ -320,7 +320,7 @@ public class Client {
         key = ByteBuffer.allocate(4).putInt(C.intValue()).array();
         System.out.println(Arrays.toString(key));
     }
-    
+
     static String encrypted(String message) throws IOException {
         int size = message.length();
         if (size % 4 != 0) {
@@ -344,7 +344,7 @@ public class Client {
         encrypted = encrypted.substring(1, encrypted.length() - 1);
         return encrypted;
     }
-    
+
     static String decrypted(String message) {
         String key = passcode;
         while (message.length() > key.length()) {
@@ -361,7 +361,7 @@ public class Client {
         }
         return decrypted;
     }
-    
+
     public static void main(String[] args) throws UnknownHostException, IOException {
 
         //IP address
@@ -384,6 +384,9 @@ public class Client {
         //try to log in
         boolean loginSuccessful = logIn();
 
+        //set socket timeout
+        socket.setSoTimeout(100);
+
         //check if the login was successful
         if (loginSuccessful) {
             //display the message GUI
@@ -394,5 +397,5 @@ public class Client {
             });
         }
     }
-    
+
 }
