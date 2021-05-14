@@ -4,25 +4,22 @@
  */
 package assignment3;
 
-//import net.miginfocom.swing.MigLayout;
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.math.BigInteger;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
-import java.net.Socket;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import net.miginfocom.swing.MigLayout;
 
 public class Client {
 
@@ -42,8 +39,8 @@ public class Client {
     static int port;
 
     // parameters for encrytion
-    static BigInteger p;
-    static BigInteger g;
+    static BigInteger p = BigInteger.valueOf(2147483647);    // Integer.MAX_VALUE and prime
+    static BigInteger g = BigInteger.valueOf(7);
     static int a;     // random for every message
     static BigInteger A;
     static BigInteger B;
@@ -56,7 +53,7 @@ public class Client {
 
     // assigned client ID from server, use throughout the process
     static String clientID;
-    
+
     // one and only passcode
     static String passcode;
 
@@ -148,14 +145,14 @@ public class Client {
         //start the timer
         timer.start();
     }
-
+    
     static void sendMessage(String message) throws IOException {
         //i'm just going to assume that which message was sent by who, keeping track of names, etc. will all be handled by the server
         byte[] buf = message.getBytes();
         DatagramPacket packet = new DatagramPacket(buf, buf.length, address, port);
         socket.send(packet);
     }
-
+    
     static String receiveMessage() throws IOException {
         // just receiving, interpret separately
         byte[] receiveBuffer = new byte[1000];
@@ -165,7 +162,7 @@ public class Client {
         String response = new String(received).trim();
         return response;
     }
-
+    
     static void receiveKey() throws IOException {
         // just receiving, interpret separately
         byte[] receiveBuffer = new byte[4];
@@ -173,17 +170,18 @@ public class Client {
         socket.receive(packet);
         byte[] received = packet.getData();
         B = BigInteger.valueOf(ByteBuffer.wrap(received).getInt());
+        System.out.println(B.intValue());
     }
-
+    
     static String leave() throws IOException {
         //send request to the server to leave
         sendMessage(leaveRequestMessage(clientID));
         //get response to request
         return receiveMessage();
     }
-
+    
     static int connect(String name, String passcode) throws IOException {
-
+        
         sendMessage(joinRequestMessage(passcode, name));
 
         //get a response from the server
@@ -201,7 +199,7 @@ public class Client {
         clientID = response;
         return 0;
     }
-
+    
     static boolean logIn() {
         boolean loginSuccessful;
 
@@ -237,73 +235,78 @@ public class Client {
             System.out.println("Error: An unknown error has occurred.");
             loginSuccessful = false;
         }
-
+        
         return loginSuccessful;
     }
-
-    static String joinRequestMessage(String passcode, String username) {
+    
+    static String joinRequestMessage(String passcode, String username) throws IOException {
+        generateRandomKey();     // random key for each message
+        String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
+        publicKey = publicKey.substring(1, publicKey.length() - 1);
         String type = "1";
+        System.out.println(type + separator + passcode + separator + username);
+        return publicKey + separator + encrypted(type + separator + passcode + separator + username);
+    }
+    
+    static String generalMessage(String clientID, String msg) throws IOException {
         generateRandomKey();     // random key for each message
-        String encryptedPasscode = encrypted(passcode);
-        String encryptedUsername = encrypted(username);
         String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
         publicKey = publicKey.substring(1, publicKey.length() - 1);
-        return type + separator + publicKey + separator + encryptedPasscode + separator + encryptedUsername;
-    }
-
-    static String generalMessage(String clientID, String msg) {
         String type = "2";
+        System.out.println(type + separator + clientID + separator + msg);
+        return publicKey + separator + encrypted(type + separator + clientID + separator + msg);
+    }
+    
+    static String leaveRequestMessage(String clientID) throws IOException {
         generateRandomKey();     // random key for each message
-        String encryptedID = encrypted(clientID);
-        String encryptedMsg = encrypted(msg);
         String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
         publicKey = publicKey.substring(1, publicKey.length() - 1);
-        return type + separator + publicKey + separator + encryptedID + separator + encryptedMsg;
-    }
-
-    static String leaveRequestMessage(String clientID) {
         String type = "3";
-        generateRandomKey();     // random key for each message
-        String encryptedID = encrypted(clientID);
-        String publicKey = Arrays.toString(ByteBuffer.allocate(4).putInt(A.intValue()).array());
-        publicKey = publicKey.substring(1, publicKey.length() - 1);
-        return type + separator + publicKey + separator + encryptedID;
+        System.out.println(type + separator + clientID);
+        return publicKey + separator + encrypted(type + separator + clientID);
     }
-
-    static String interpretMessage(String msg) {
+    
+    static String interpretMessage(String message) {
+        String msg = decrypted(message);
         String[] parsed = msg.split(parseSeparator);
         String type = parsed[0];
         switch (type) {
             case "1":
-                return decrypted(parsed[1]);     // client ID
+                return parsed[1];     // client ID
             case "2":
-                return decrypted(parsed[1]) + ": " + decrypted(parsed[2]);     // username: massage
+                return parsed[1] + ": " + parsed[2];     // username: massage
             case "3":
                 return parsed[1];     // END
             case "4":
                 return "Error " + parsed[1] + ": " + parsed[2];     // Error [errCode]: errMessage 
             case "5":
-                return decrypted(parsed[1]);
+                return parsed[1];
             default:
                 return "Unknown message";
         }
     }
-
+    
     static void generateRandomKey() {
         a = (int) (Math.random() * 100) + 10;
         A = g.pow(a).mod(p);
         C = B.pow(a).mod(p);
         key = ByteBuffer.allocate(4).putInt(C.intValue()).array();
+        System.out.println(Arrays.toString(key));
     }
-
-    static String encrypted(String message) {
+    
+    static String encrypted(String message) throws IOException {
         int size = message.length();
         if (size % 4 != 0) {
             size = size + (4 - size % 4);     // to make the size multiple of 4, easier to parse integer
         }
         byte[] encryptedBytes = new byte[size];
         int intKey = ByteBuffer.wrap(key).getInt();
-        ByteBuffer buffer = ByteBuffer.wrap(message.getBytes());
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        b.write(message.getBytes());
+        for (int i = 0; i < (4 - size % 4); i++) {
+            b.write((byte) 0);
+        }
+        ByteBuffer buffer = ByteBuffer.wrap(b.toByteArray());
         for (int i = 0; i < size; i = i + 4) {
             int intMessage = buffer.getInt();
             int xor = intMessage ^ intKey;
@@ -314,7 +317,7 @@ public class Client {
         encrypted = encrypted.substring(1, encrypted.length() - 1);
         return encrypted;
     }
-
+    
     static String decrypted(String message) {
         String key = passcode;
         while (message.length() > key.length()) {
@@ -331,18 +334,18 @@ public class Client {
         }
         return decrypted;
     }
-
+    
     public static void main(String[] args) throws UnknownHostException, IOException {
 
         //IP address
         //just fill in the blank with the IP address of the machine that will run the server
         group = InetAddress.getByName("230.0.0.0");
-        address = InetAddress.getByName("");
+        address = InetAddress.getByName("pi.cs.oswego.edu");
 
         //port number
         //just change the "2770" with whichever port number we're actually gonna use
         port = 2770;
-        
+
         //establish connection to server
         socket = new MulticastSocket(port);
         socket.joinGroup(group);
@@ -364,5 +367,5 @@ public class Client {
             });
         }
     }
-
+    
 }
